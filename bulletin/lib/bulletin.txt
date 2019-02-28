@@ -1,10 +1,13 @@
 defmodule Bulletin do
-
 end
 
 
 defmodule User do
+  subscriptions = []
   def run() do
+    receive do
+      {:post,poster,content} -> IO.puts(content)
+    end
     run()
   end
 
@@ -14,8 +17,11 @@ defmodule User do
       undefined ->
         pid = spawn(TopicManager,:start,[topic_name])
         send(pid, {:subscribe, self()})
+        #TODO: SAVE GLOBAL SUBSCRIPTIONS
+        subscriptions = [pid]+subscriptions
       pid ->
         send(pid,{:subscribe, self()})
+        subscriptions = [pid]+subscriptions
     end
   end
 
@@ -23,6 +29,8 @@ defmodule User do
   def unsubscribe(topic_name,user_name) do
     #lookup pid of topicmanager of this topic
     managerpid = :global.whereis_name(topic_name)
+    #filter subscriptions to remove that pid from the subscriptions list
+    subscriptions = Enum.reject(subscriptions, fn x -> x == managerpid end)
     #tell the manager to remove this User from it's list
     send(managerpid,{:unsubscribe,self()})
   end
@@ -37,11 +45,7 @@ defmodule User do
 
   def fetch_news() do
     #enumerate through subscriptions list and send each pid a :fetch message
-    #Enum.each(subscriptions,fn x -> send(x,{:fetch_news,self()}) end)
-    receive do
-      {:post,poster,post} -> IO.puts(post)
-      fetch_news()
-    end
+    Enum.each(subscriptions,fn x -> send(x,{:fetch_news,self()}))
   end
 end
 
@@ -59,9 +63,13 @@ defmodule TopicManager do
         #remove pid from subscribers list
         subscribers_new = Enum.reject(subscribers, fn x -> x == pid end)
         run(subscribers_new, content)
+      {:fetch_news, caller} -> 
+        #send the caller every message in content
+        Enum.each(content, fn x -> send(caller, x)
+        run(subscribers,content)
       {:post, poster, post}-> 
         #send post to all subscribers/..../
-        Enum.each(subscribers,fn x -> send(x,{:post,poster,post}) end)
+        Enum.each(subscribers,fn x -> send(x,{:post,poster,post}))
         #add this message to the content list
         run(subscribers,[content|{:post,poster,post}])
     end
